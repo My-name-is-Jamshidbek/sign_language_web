@@ -6,7 +6,7 @@ import numpy as np
 
 class SignToTXT:
     def __init__(self):
-        self.model_dict = pickle.load(open(r'../train_classifier/model.p', 'rb'))
+        self.model_dict = pickle.load(open(r'hand_detector/train_classifier/model.p', 'rb'))
         self.model = self.model_dict['model']
 
         self.mp_hands = mp.solutions.hands
