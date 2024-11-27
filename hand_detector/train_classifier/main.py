@@ -13,6 +13,7 @@ j = 0
 m = 0
 nm = []
 nl = []
+print(data_dict['data'])
 for i in data_dict['data']:
     s = len(i)
     if s != s1:
