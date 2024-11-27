@@ -122,7 +122,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+# Directory where static files will be collected during deployment
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+# Additional directories to search for static files (useful during development)
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),  # Your main static directory
+]
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
