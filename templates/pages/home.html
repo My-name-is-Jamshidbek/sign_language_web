@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Webcam Capture and Regenerate</title>
+    <style>
+        /* Reset default margins and paddings */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Set the body to occupy the full viewport and use Flexbox */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Horizontally center */
+            justify-content: center; /* Vertically center */
+            min-height: 100vh; /* Ensure the body takes up full viewport height */
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0; /* Optional: Light background for better contrast */
+        }
+
+        /* Container for video and controls */
+        .video-controls-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        /* Style for video element */
+        video {
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            max-width: 100%;
+            height: auto;
+            background-color: #000; /* Optional: Black background when video is not available */
+        }
+
+        /* Style for buttons */
+        #controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #007BFF;
+            color: white;
+            transition: background-color 0.3s ease;
+        }
+
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+
+        /* Container for the regenerated image */
+        #regenerated-image-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 640px; /* Match the video width for consistency */
+            height: 480px; /* Set a fixed height */
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            background-color: white;
+            position: relative; /* To position the image absolutely if needed */
+        }
+
+        /* Style for the regenerated image */
+        #regenerated-image {
+            max-width: 100%;
+            max-height: 100%;
+            display: none; /* Hidden initially */
+            border-radius: 5px;
+        }
+
+        /* Optional: Overlay text when no image is displayed */
+        #regenerated-image-placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #888;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 700px) {
+            #regenerated-image-container {
+                width: 90%;
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Real-Time sign language translator</h1>
+
+    <div class="video-controls-container">
+        <video id="video" width="640" height="480" autoplay></video>
+
+        <div id="controls">
+            <button id="start-btn">Start Translating</button>
+            <button id="stop-btn" disabled>Stop Translating</button>
+        </div>
+    </div>
+
+    <div id="regenerated-image-container">
+        <div id="regenerated-image-placeholder">Translated image will appear here.</div>
+        <img id="regenerated-image" src="" alt="Regenerated Image" />
+    </div>
+
+    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+
+    <!-- CSRF Token -->
+    <script>
+        // Function to get CSRF token from cookies
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    // Does this cookie string begin with the name we want?
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+    </script>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const regeneratedImage = document.getElementById('regenerated-image');
+        const regeneratedImagePlaceholder = document.getElementById('regenerated-image-placeholder');
+        let streaming = false;
+        let captureInterval = null;
+
+        // Function to start the webcam stream
+        function startWebcam() {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.play();
+                    streaming = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    // Start capturing images every second
+                    captureInterval = setInterval(captureAndSend, 300); // 1000ms = 1s
+                })
+                .catch(err => {
+                    console.error("Error accessing webcam: ", err);
+                    alert("Could not access the webcam. Please allow webcam access or use a supported device.");
+                });
+        }
+
+        // Function to stop the webcam stream
+        function stopWebcam() {
+            const stream = video.srcObject;
+            if (stream) {
+                const tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            streaming = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            if (captureInterval) {
+                clearInterval(captureInterval);
+                captureInterval = null;
+            }
+        }
+
+        // Function to capture image and send to backend
+        function captureAndSend() {
+            if (!streaming) return;
+
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(blob => {
+                // Prepare the form data
+                const formData = new FormData();
+                formData.append('image', blob, 'captured_image.png');
+
+                // Send the image to the backend
+                fetch('/process-image/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: formData
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Assuming the backend returns the URL of the regenerated image
+                    if (data.regenerated_image_url) {
+                        updateRegeneratedImage(data.regenerated_image_url);
+                    } else {
+                        throw new Error('Invalid response from server');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    // Optionally, display error on the page
+                });
+            }, 'image/png');
+        }
+
+        // Function to update the regenerated image
+        function updateRegeneratedImage(url) {
+            regeneratedImage.src = url + '?t=' + new Date().getTime(); // Prevent caching
+            regeneratedImage.style.display = 'block';
+            regeneratedImagePlaceholder.style.display = 'none';
+        }
+
+        // Event listeners for start and stop buttons
+        startBtn.addEventListener('click', startWebcam);
+        stopBtn.addEventListener('click', stopWebcam);
+
+        // Optionally, automatically start streaming on page load
+        // window.addEventListener('load', startWebcam);
+    </script>
+</body>
+</html>
